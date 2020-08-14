@@ -23,7 +23,7 @@ Station=Base.classes.station
 # Flask Setup
 #################################################
 app = Flask(__name__)
-
+app.config['JSON_SORT_KEYS']= False
 
 
 #################################################
@@ -37,7 +37,7 @@ def welcome():
         f"<strong>Available Routes:</strong><br/>"
         f"<br/>Precipitationin all stations :      /api/v1.0/precipitation<br/>"
         f"<br/>List of Stations:                   /api/v1.0/stations<br/>"
-        f"<br/>Temperature observations:           /api/v1.0/tobs<br/>"
+        f"<br/>Temperature observations for most active station:           /api/v1.0/tobs<br/>"
         f"<br/>TMIN,TAVG,TMAX for all dates greater start date 'yyyy-mm-dd':  /api/v1.0/start'yyyy-mm-dd'<br/>"
         f"For Example: /api/v1.0/2012-05-21'<br/>"
 
@@ -51,13 +51,21 @@ def welcome():
 @app.route("/api/v1.0/precipitation")
 def precipitation():
     # Create our session (link) from Python to the DB
+    #Note: Because the date is not unique we return the station ID too
     session = Session(engine)
     results = session.query(Measurement.station,Measurement.date,Measurement.prcp).all()
     session.close()
 
     # Convert list of tuples into normal list
-    PRCP = list(np.ravel(results))
-    
+    PRCP = []
+    for station,date,prcp in results:
+        Temp_dict={}
+        Temp_dict["station"] = station
+        Temp_dict["date"] = date
+        Temp_dict["prcp"] = prcp
+
+        PRCP.append(Temp_dict)
+
     return jsonify(PRCP)
 
 
@@ -68,7 +76,6 @@ def stations():
     results = session.query(Station.station).all()
     session.close()
 
-    # Convert list of tuples into normal list
     ST = list(np.ravel(results))
     
     return jsonify(ST)
@@ -92,15 +99,25 @@ def tobs():
             MAX_row=Measurement_data2[i][1]
             MAX_id=Measurement_data2[i][0]
     #Generating the final query : Query the dates and temperature observations of the most active station for the last year of data.
-    results=session.query(Measurement.date,Measurement.tobs)\
+    results=session.query(Measurement.station,Measurement.date,Measurement.tobs)\
                         .filter(Measurement.date >= Last_year_date)\
                         .filter(Measurement.station == MAX_id).all()
                             
     session.close()
 
     # Convert list of tuples into normal list
-    TOBS = list(np.ravel(results))
+    #TOBS = list(np.ravel(results))
+    TOBS= []
+    for station,date,tobs in results:
+        temp_dict = {}
+        temp_dict["Station"] = station
+        temp_dict["date"] = date
+        temp_dict["tobs"] = tobs
+        TOBS.append(temp_dict)
     
+
+
+
     return jsonify(TOBS)
 
     
@@ -112,11 +129,18 @@ def Start_day(start):
     session = Session(engine)
 
     #Generating the final query: TMIN, TAVG, and TMAX for all dates greater than and equal to the start date.
-    results=session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
-        filter(Measurement.date >= start).all()
+    results=session.query(Measurement.station,func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
+        filter(Measurement.date >= start).group_by(Measurement.station).all()
     session.close()
 
-    TOBS_ST = list(np.ravel(results))
+    TOBS_ST= []
+    for station,tmin,tmax,tavg in results:
+        temp_dict = {}
+        temp_dict["Station"] = station
+        temp_dict["Min"] = tmin
+        temp_dict["Max"] = tmax
+        temp_dict["Avg"] = tavg
+        TOBS_ST.append(temp_dict)
     
     return jsonify(TOBS_ST)
     
@@ -128,12 +152,20 @@ def Start_End_day(start,end):
     
     #Generating the final query: TMIN, TAVG, and TMAX for all dates greater than and equal to the start date.
 
-    results=session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
-        filter(Measurement.date >= start).filter(Measurement.date <= end).all()
+    results=session.query(Measurement.station,func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
+        filter(Measurement.date >= start).filter(Measurement.date <= end).group_by(Measurement.station).all()
     session.close()
 
  
-    TOBS_ST = list(np.ravel(results))
+    TOBS_ST= []
+    for station,tmin,tmax,tavg in results:
+        temp_dict = {}
+        temp_dict["Station"] = station
+        temp_dict["Min"] = tmin
+        temp_dict["Max"] = tmax
+        temp_dict["Avg"] = tavg
+        TOBS_ST.append(temp_dict)
+    
     return jsonify(TOBS_ST)
     
      
